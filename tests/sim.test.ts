@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as A from '../src/core/actions';
 import { simulate, STARVE_DAMAGE, tankStats } from '../src/core/sim';
-import { createNewSave, newFish } from '../src/core/state';
+import { createNewSave, newFish, STARTER_HUNGER, TUTORIAL_DONE } from '../src/core/state';
 import { seeded } from '../src/core/rng';
 import { HOUR, MINUTE } from '../src/core/time';
 
@@ -22,12 +22,13 @@ describe('simulation', () => {
 
   it('starving fish lose health and eventually die', () => {
     const s = fresh();
-    // 20 hunger + 8/h → starving at 10h, then 100/6 ≈ 16.7h to die. Alive at 24h, dead by 30h.
-    const ev1 = simulate(s, T0 + 24 * HOUR);
+    // Starter fish begin at 45 hunger + 8/h → starving at ~7h, then 100/6 ≈ 16.7h to die. Alive at 18h, dead by 26h.
+    expect(s.fish.every((f) => f.hunger === STARTER_HUNGER)).toBe(true);
+    const ev1 = simulate(s, T0 + 18 * HOUR);
     expect(s.fish.length).toBe(3);
     expect(ev1.some((e) => e.kind === 'hungry')).toBe(true);
     expect(ev1.some((e) => e.kind === 'starving')).toBe(true);
-    const ev2 = simulate(s, T0 + 30 * HOUR);
+    const ev2 = simulate(s, T0 + 26 * HOUR);
     expect(s.fish.length).toBe(0);
     expect(s.memorial).toHaveLength(3);
     expect(s.memorial[0].cause).toBe('starvation');
@@ -218,6 +219,34 @@ describe('actions', () => {
     expect(A.rehomeFish(s, s.fish[0].id, T0).ok).toBe(true);
     expect(s.fish).toHaveLength(2);
     expect(s.shells).toBeGreaterThan(shells);
+  });
+
+  it('the very first feed of a new tank is not an overfeed', () => {
+    const s = fresh();
+    const water = s.water;
+    A.feed(s, T0);
+    expect(s.water).toBe(water);
+    expect(s.xp).toBeGreaterThan(0);
+  });
+
+  it('tutorial: new tanks start it, skipping pays nothing, finishing pays once', () => {
+    const s = fresh();
+    expect(s.tutorial).toBe(0);
+    expect(A.setTutorialStep(s, 4, T0).ok).toBe(true);
+    expect(s.tutorial).toBe(4);
+    const skipped = fresh();
+    const before = skipped.shells;
+    expect(A.endTutorial(skipped, false, T0).ok).toBe(true);
+    expect(skipped.tutorial).toBe(TUTORIAL_DONE);
+    expect(skipped.shells).toBe(before);
+    expect(A.setTutorialStep(skipped, 2, T0).ok).toBe(false); // stays finished
+    const done = fresh();
+    A.endTutorial(done, true, T0);
+    expect(done.shells).toBe(before + A.TUTORIAL_REWARD);
+    expect(A.endTutorial(done, true, T0).ok).toBe(false);
+    expect(done.shells).toBe(before + A.TUTORIAL_REWARD);
+    A.restartTutorial(done, T0);
+    expect(done.tutorial).toBe(0);
   });
 
   it('renames fish safely', () => {

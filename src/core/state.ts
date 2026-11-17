@@ -135,7 +135,13 @@ export interface SaveData {
   lastVisitDay: string;
   /** flags used to avoid repeating warnings */
   flags: Record<string, boolean>;
+  /** Tutorial step in progress (0+), or TUTORIAL_DONE once finished/skipped. */
+  tutorial: number;
 }
+
+export const TUTORIAL_DONE = -1;
+/** Starter fish arrive a little peckish so the very first feed is a satisfying one. */
+export const STARTER_HUNGER = 45;
 
 export function emptyStats(): Stats {
   return { fed: 0, cleaned: 0, hatched: 0, shellsEarned: 0, fishLost: 0, chestsOpened: 0, rehomed: 0 };
@@ -170,7 +176,7 @@ export function createNewSave(name: string, now: number, rng: Rng = defaultRng):
     xp: 0,
     level: 1,
     water: 92,
-    fish: [newFish('neon_tetra', now, rng, true), newFish('neon_tetra', now, rng, true), newFish('neon_tetra', now, rng, true)],
+    fish: [0, 1, 2].map(() => ({ ...newFish('neon_tetra', now, rng, true), hunger: STARTER_HUNGER })),
     plants: [
       { id: uid(rng), type: 'java_fern', plantedAt: now - 2 * HOUR, x: -0.32, z: -0.22, matured: true },
       { id: uid(rng), type: 'eelgrass', plantedAt: now - 2 * HOUR, x: 0.3, z: -0.28, matured: true },
@@ -190,6 +196,7 @@ export function createNewSave(name: string, now: number, rng: Rng = defaultRng):
     streak: 1,
     lastVisitDay: '',
     flags: {},
+    tutorial: 0,
   };
 }
 
@@ -236,6 +243,8 @@ export function migrate(raw: unknown): SaveData | null {
     streak: num(r.streak, 1),
     lastVisitDay: str(r.lastVisitDay, ''),
     flags: (r.flags && typeof r.flags === 'object' ? r.flags : {}) as Record<string, boolean>,
+    // Saves from before the tutorial existed shouldn't suddenly start one.
+    tutorial: Math.floor(num(r.tutorial, TUTORIAL_DONE)),
   };
 }
 

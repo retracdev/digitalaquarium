@@ -160,6 +160,14 @@ export class AquariumController {
   theme = (id: string) => this.run('theme', (s, n) => A.buyTheme(s, id, n));
   lights = (mode: 'auto' | 'day' | 'night') => this.run('lights', (s, n) => A.setLights(s, mode, n));
   renameTank = (name: string) => this.run('renameTank', (s, n) => A.renameTank(s, name, n));
+  tutorialStep = (step: number) => {
+    if (A.setTutorialStep(this.save, step, this.now()).ok) {
+      this.dirty = true;
+      this.persist();
+    }
+  };
+  endTutorial = (completed: boolean) => this.run('endTutorial', (s, n) => A.endTutorial(s, completed, n));
+  restartTutorial = () => this.run('restartTutorial', A.restartTutorial);
 
   /** Secret console entry point. */
   command(input: string): ConsoleOutput {

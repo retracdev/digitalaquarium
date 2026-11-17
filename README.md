@@ -33,7 +33,7 @@ Everything (fish, plants, decor, water, caustics) is generated in code with [thr
 
 ### Controls
 
-Drag to orbit, scroll to zoom, double-click to reset the camera. Click a fish to inspect, rename, follow or rehome it; click plants/decor to move or remove them; click a glowing chest to loot it.
+A short guided tutorial runs on every new tank (skippable; replay it from the tank menu). Drag to orbit, scroll to zoom, double-click to reset the camera. Click a fish to inspect, rename, follow or rehome it; click plants/decor to move or remove them; click a glowing chest to loot it.
 
 Shortcuts: **F** feed · **C** clean · **G** collect · **H** hatchery · **S** shop · **T** tank · **J** journal · **P** photo · **Esc** close.
 
@@ -45,7 +45,7 @@ Storage is behind a `SaveBackend` interface (`src/storage/saves.ts`), so a cloud
 
 ## The secret keeper console (testing)
 
-Press <kbd>`</kbd> in the app (or call `aquarium('…')` from devtools) and type `help`.
+Press <kbd>`</kbd> with the page focused to open the in-app console and type plain commands like `warp 2h`. From the browser's devtools console (which only runs JavaScript), wrap them instead: `aquarium('warp 2h')`.
 
 | Command | |
 |---|---|
