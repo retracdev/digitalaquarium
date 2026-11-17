@@ -4,7 +4,7 @@ import { DECOR_BY_ID, PLANTS_BY_ID, SPECIES_BY_ID } from '../core/catalog';
 import { levelProgress, MAX_LEVEL } from '../core/progress';
 import { fishGrowth, HUNGRY, pendingCap, plantProgress, targetHappiness, tankStats } from '../core/sim';
 import type { SimEvent } from '../core/state';
-import { formatAgo, formatDuration } from '../core/time';
+import { detectedTimeZone, formatAgo, formatClock, formatDuration } from '../core/time';
 import type { AquariumScene, PickResult } from '../render/scene';
 import { daylightAt } from '../render/scene';
 import { DevConsole } from './console';
@@ -196,9 +196,9 @@ export class UI implements PanelHost {
     p.shells.textContent = fmt(s.shells);
     p.water.textContent = `${Math.round(s.water)}%`;
     p.water.style.color = s.water < 25 ? 'var(--bad)' : s.water < 50 ? 'var(--warn)' : '';
-    const d = new Date(now);
-    p.clock.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const isDay = s.lights === 'day' || (s.lights === 'auto' && daylightAt(now) > 0.5);
+    p.clock.textContent = formatClock(now, s.timeZone);
+    p.clock.parentElement!.title = `Tank clock · ${(s.timeZone || detectedTimeZone()).replace(/_/g, ' ')}${s.timeZone ? '' : ' (auto)'} · change in Tank → Care`;
+    const isDay = s.lights === 'day' || (s.lights === 'auto' && daylightAt(now, s.timeZone) > 0.5);
     if (p.clockIcon.dataset.day !== String(isDay)) {
       p.clockIcon.dataset.day = String(isDay);
       p.clockIcon.replaceChildren(icon(isDay ? 'sun' : 'moon'));

@@ -19,7 +19,7 @@ import { checkAchievements, grantXp, pushEvent } from './progress';
 import { clamp, defaultRng, uid, weightedPick, type Rng } from './rng';
 import { applyFeed, feederCapacity, fishGrowth, fishLoad, HUNGRY, tankStats } from './sim';
 import { newFish, TUTORIAL_DONE, type Fish, type LightMode, type SaveData, type SimEvent, type UpgradeKind } from './state';
-import { dayKey, daysBetween } from './time';
+import { dayKey, daysBetweenKeys, isValidTimeZone } from './time';
 
 export interface ActionResult {
   ok: boolean;
@@ -270,6 +270,13 @@ export function setLights(save: SaveData, mode: LightMode, now: number): ActionR
   return finish(save, now, `Lights: ${mode}.`, []);
 }
 
+/** '' = follow the browser; otherwise an IANA zone like "America/Denver". */
+export function setTimeZone(save: SaveData, tz: string, now: number): ActionResult {
+  if (tz && !isValidTimeZone(tz)) return fail(`Unknown time zone "${tz}".`);
+  save.timeZone = tz;
+  return finish(save, now, tz ? `Time zone set to ${tz.replace(/_/g, ' ')}.` : 'Time zone follows this device.', []);
+}
+
 export function renameTank(save: SaveData, name: string, now: number): ActionResult {
   const clean = name.trim().slice(0, 24);
   if (!clean) return fail('Give your tank a name.');
@@ -305,12 +312,11 @@ export function restartTutorial(save: SaveData, now: number): ActionResult {
 
 /** Daily visit streak + bonus. Safe to call on every tick. */
 export function checkDaily(save: SaveData, now: number): SimEvent[] {
-  const today = dayKey(now);
+  const today = dayKey(now, save.timeZone);
   if (save.lastVisitDay === today) return [];
   const events: SimEvent[] = [];
   if (save.lastVisitDay) {
-    const [y, m, d] = save.lastVisitDay.split('-').map(Number);
-    const gap = daysBetween(new Date(y, m - 1, d).getTime(), now);
+    const gap = daysBetweenKeys(save.lastVisitDay, today);
     save.streak = gap === 1 ? save.streak + 1 : 1;
     const bonus = 20 + 10 * Math.min(save.streak, 7);
     save.shells += bonus;

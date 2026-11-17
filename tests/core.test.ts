@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { levelFromXp, levelProgress, xpForLevel, grantXp, MAX_LEVEL } from '../src/core/progress';
-import { formatDuration, parseDuration, HOUR, MINUTE, DAY } from '../src/core/time';
+import { formatDuration, parseDuration, HOUR, MINUTE, DAY, hourOfDay, formatClock, dayKey, isValidTimeZone, detectedTimeZone, timeZoneList, daysBetweenKeys } from '../src/core/time';
 import { createNewSave, migrate } from '../src/core/state';
 import { runCommand, type ConsoleHost } from '../src/core/devconsole';
 import { simulate } from '../src/core/sim';
 import { SPECIES, PLANTS, DECOR } from '../src/core/catalog';
+import { buyEgg, checkDaily, setTimeZone } from '../src/core/actions';
 
 const T0 = new Date(2026, 0, 10, 9, 0, 0).getTime();
 
@@ -55,6 +56,18 @@ describe('catalog', () => {
       for (const item of list) expect(item.cost).toBeGreaterThan(0);
     }
     for (const s of SPECIES) expect(s.hatchMs).toBeGreaterThanOrEqual(HOUR);
+  });
+});
+
+describe('koi', () => {
+  it('is a basic fish anyone can hatch from level 1', () => {
+    const koi = SPECIES.find((s) => s.id === 'koi')!;
+    expect(koi).toBeTruthy();
+    expect(koi.rarity).toBe('common');
+    expect(koi.unlockLevel).toBe(1);
+    const s = createNewSave('Pond', T0);
+    expect(buyEgg(s, 'koi', T0).ok).toBe(true);
+    expect(s.eggs.at(-1)!.species).toBe('koi');
   });
 });
 
@@ -124,5 +137,51 @@ describe('secret console', () => {
     expect(runCommand(h, 'spawn kraken').lines[0]).toMatch(/Unknown species/);
     expect(runCommand(h, 'nope').lines[0]).toMatch(/Unknown command/);
     expect(runCommand(h, 'help').lines.length).toBeGreaterThan(5);
+  });
+});
+
+describe('time zones', () => {
+  // 8:46 PM on Nov 16 in Denver (MST, UTC-7) is 03:46 UTC on Nov 17.
+  const instant = Date.UTC(2026, 10, 17, 3, 46);
+
+  it('reads the clock in a chosen zone', () => {
+    expect(hourOfDay(instant, 'America/Denver')).toBeCloseTo(20 + 46 / 60, 5);
+    expect(hourOfDay(instant, 'Asia/Tokyo')).toBeCloseTo(12 + 46 / 60, 5);
+    expect(hourOfDay(instant, 'UTC')).toBeCloseTo(3 + 46 / 60, 5);
+    expect(formatClock(instant, 'America/Denver')).toMatch(/8:46/);
+    expect(dayKey(instant, 'America/Denver')).toBe('2026-11-16');
+    expect(dayKey(instant, 'Asia/Tokyo')).toBe('2026-11-17');
+  });
+
+  it('falls back to the browser zone for empty or bogus zones', () => {
+    expect(isValidTimeZone('America/Denver')).toBe(true);
+    expect(isValidTimeZone('Mars/Olympus_Mons')).toBe(false);
+    expect(dayKey(instant, 'Mars/Olympus_Mons')).toBe(dayKey(instant, ''));
+    expect(detectedTimeZone()).toBeTruthy();
+    expect(timeZoneList()).toContain('America/Denver');
+  });
+
+  it('counts calendar days between keys', () => {
+    expect(daysBetweenKeys('2026-11-16', '2026-11-17')).toBe(1);
+    expect(daysBetweenKeys('2026-12-31', '2027-1-1')).toBe(1);
+    expect(daysBetweenKeys('2026-11-16', '2026-11-20')).toBe(4);
+  });
+
+  it('setting a time zone validates it and drives the daily streak', () => {
+    const s = createNewSave('x', instant);
+    expect(setTimeZone(s, 'Nowhere/Land', instant).ok).toBe(false);
+    expect(setTimeZone(s, 'America/Denver', instant).ok).toBe(true);
+    checkDaily(s, instant); // Nov 16 in Denver
+    // Two hours later it's Nov 17 in Tokyo, but still Nov 16 in Denver: no new day yet.
+    expect(checkDaily(s, instant + 2 * HOUR)).toHaveLength(0);
+    // Four hours later it's past midnight in Denver, so the streak ticks over.
+    checkDaily(s, instant + 4 * HOUR);
+    expect(s.streak).toBe(2);
+    expect(setTimeZone(s, '', instant).ok).toBe(true);
+    expect(s.timeZone).toBe('');
+  });
+
+  it('older saves default to following the browser', () => {
+    expect(migrate({ v: 1, createdAt: T0 })!.timeZone).toBe('');
   });
 });

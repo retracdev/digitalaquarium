@@ -71,6 +71,16 @@ function patternColor(pattern: Pattern, body: THREE.Color, accent: THREE.Color, 
         }
       }
       break;
+    case 'patches':
+      // koi-style: a few big, irregular blotches across the back, unique per fish
+      for (const s of spots.slice(0, 5)) {
+        const d = Math.hypot(nx - s.x, ny - Math.abs(s.y), nz - s.z);
+        if (ny > -0.25 && d < 0.5 + Math.sin(nx * 9 + nz * 7) * 0.08) {
+          c.lerp(accent, 0.95);
+          break;
+        }
+      }
+      break;
     case 'none':
     default:
       if (nz < -0.3) c.lerp(accent, Math.min(1, (-nz - 0.3) * 1.2));
@@ -139,9 +149,11 @@ function tailGeo(kind: ShapeCfg['tail'], size: number, h: number): THREE.BufferG
     case 'fork':
       return finGeo([[0, 0.08 * h], [0.55 * s, 0.75 * h * s + 0.1], [0.42 * s, 0], [0.55 * s, -0.75 * h * s - 0.1], [0, -0.08 * h]], false);
     case 'fan':
-      return finGeo([[0, 0.06], [0.5 * s, 0.7 * s], [0.9 * s, 0.1], [0.92 * s, -0.25], [0.5 * s, -0.7 * s], [0, -0.06]], false);
+      // curved: start, then (control, end) pairs → a soft rounded fan
+      return finGeo([[0, 0.06], [0.55 * s, 0.85 * s], [0.95 * s, 0.1], [0.6 * s, -0.8 * s], [0, -0.06]]);
     case 'flow':
-      return finGeo([[0, 0.1], [0.6 * s, 0.9 * s], [1.1 * s, 0.4 * s], [1.0 * s, -0.1], [1.15 * s, -0.6 * s], [0.5 * s, -0.85 * s], [0, -0.1]], false);
+      // curved: two billowing lobes with a soft notch between them
+      return finGeo([[0, 0.1], [0.7 * s, 1.0 * s], [1.15 * s, 0.45 * s], [0.85 * s, 0], [1.15 * s, -0.5 * s], [0.6 * s, -0.95 * s], [0, -0.1]]);
     case 'double':
       return finGeo([[0, 0.12], [0.5 * s, 0.75 * s], [0.95 * s, 0.55 * s], [0.6 * s, 0], [0.95 * s, -0.55 * s], [0.5 * s, -0.75 * s], [0, -0.12]], false);
     case 'round':
