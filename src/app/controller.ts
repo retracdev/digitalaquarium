@@ -159,6 +159,7 @@ export class AquariumController {
   medicine = () => this.run('medicine', A.giveMedicine);
   theme = (id: string) => this.run('theme', (s, n) => A.buyTheme(s, id, n));
   lights = (mode: 'auto' | 'day' | 'night') => this.run('lights', (s, n) => A.setLights(s, mode, n));
+  setTimeZone = (tz: string) => this.run('timeZone', (s, n) => A.setTimeZone(s, tz, n));
   renameTank = (name: string) => this.run('renameTank', (s, n) => A.renameTank(s, name, n));
   tutorialStep = (step: number) => {
     if (A.setTutorialStep(this.save, step, this.now()).ok) {

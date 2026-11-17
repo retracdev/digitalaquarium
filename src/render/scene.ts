@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { AquariumController } from '../app/controller';
 import { DECOR_BY_ID, SPECIES_BY_ID, TANK_TIERS, THEMES, THEMES_BY_ID } from '../core/catalog';
 import { hashString } from '../core/rng';
+import { hourOfDay } from '../core/time';
 import { fishGrowth, plantProgress } from '../core/sim';
 import type { SaveData } from '../core/state';
 import { buildDecor, type DecorRig } from './decorModels';
@@ -41,10 +42,9 @@ function smoothstep(a: number, b: number, x: number) {
   return t * t * (3 - 2 * t);
 }
 
-/** Daylight 0..1 from the local hour of the simulation clock. */
-export function daylightAt(time: number): number {
-  const d = new Date(time);
-  const h = d.getHours() + d.getMinutes() / 60;
+/** Daylight 0..1 from the hour of the simulation clock in the tank's time zone. */
+export function daylightAt(time: number, tz = ''): number {
+  const h = hourOfDay(time, tz);
   return smoothstep(6, 8, h) * (1 - smoothstep(19, 21, h));
 }
 
@@ -516,7 +516,7 @@ export class AquariumScene {
     const now = this.ctrl.loaded ? this.ctrl.now() : Date.now();
 
     // Environment
-    const targetLight = !save || save.lights === 'auto' ? daylightAt(now) : save.lights === 'day' ? 1 : 0;
+    const targetLight = !save || save.lights === 'auto' ? daylightAt(now, save?.timeZone) : save.lights === 'day' ? 1 : 0;
     this.light += (targetLight - this.light) * Math.min(1, dt * 1.5);
     const targetMurk = save ? THREE.MathUtils.clamp((75 - save.water) / 70, 0, 1) : 0;
     this.murk += (targetMurk - this.murk) * Math.min(1, dt * 2);

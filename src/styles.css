@@ -1248,3 +1248,9 @@ input.text:focus {
     box-shadow: 0 0 0 8px rgba(185, 178, 255, 0.08), 0 0 34px rgba(185, 178, 255, 0.6);
   }
 }
+
+select.text {
+  appearance: auto;
+  color-scheme: dark;
+  cursor: pointer;
+}

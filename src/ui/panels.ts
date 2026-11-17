@@ -19,7 +19,7 @@ import {
 import { ACHIEVEMENTS } from '../core/progress';
 import { feederCapacity, fishGrowth, tankStats } from '../core/sim';
 import type { UpgradeKind } from '../core/state';
-import { formatAgo, formatDuration } from '../core/time';
+import { detectedTimeZone, formatAgo, formatClock, formatDuration, timeZoneList } from '../core/time';
 import { fmt, h } from './dom';
 import { shellIcon } from './icons';
 
@@ -299,6 +299,23 @@ export function tankPanel(host: PanelHost): HTMLElement[] {
     for (const mode of ['auto', 'day', 'night'] as const)
       seg.append(h('button', { class: s.lights === mode ? 'on' : '', onclick: () => ctrl.lights(mode) }, mode === 'auto' ? 'Follow clock' : mode === 'day' ? 'Always day' : 'Always night'));
     out.push(h('div', { class: 'card', style: 'flex-direction:column;align-items:flex-start' }, seg, h('p', null, 'Glowing creatures shine brightest at night.')));
+    const detected = detectedTimeZone();
+    const tzSelect = h(
+      'select',
+      { class: 'text', 'aria-label': 'Time zone', onchange: (e: Event) => ctrl.setTimeZone((e.target as HTMLSelectElement).value) },
+      h('option', { value: '' }, `Auto: ${detected.replace(/_/g, ' ')}`),
+      ...timeZoneList().map((z) => h('option', { value: z }, z.replace(/_/g, ' '))),
+    ) as HTMLSelectElement;
+    tzSelect.value = s.timeZone;
+    out.push(
+      h('div', { class: 'section-title' }, 'Time zone'),
+      h(
+        'div',
+        { class: 'card', style: 'flex-direction:column;align-items:stretch' },
+        tzSelect,
+        h('p', null, `Drives the clock, day and night, and your daily streak. It is ${formatClock(now, s.timeZone)} in the tank right now.`),
+      ),
+    );
     const input = h('input', { class: 'text', value: s.name, maxlength: '24' }) as HTMLInputElement;
     input.addEventListener('keydown', (e) => e.key === 'Enter' && ctrl.renameTank(input.value));
     out.push(h('div', { class: 'section-title' }, 'Tank name'), h('div', { class: 'row' }, input, h('button', { class: 'btn', onclick: () => ctrl.renameTank(input.value) }, 'Save')));

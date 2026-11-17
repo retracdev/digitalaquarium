@@ -137,6 +137,8 @@ export interface SaveData {
   flags: Record<string, boolean>;
   /** Tutorial step in progress (0+), or TUTORIAL_DONE once finished/skipped. */
   tutorial: number;
+  /** IANA time zone for clock/day-night/streaks; '' follows the browser. */
+  timeZone: string;
 }
 
 export const TUTORIAL_DONE = -1;
@@ -197,6 +199,7 @@ export function createNewSave(name: string, now: number, rng: Rng = defaultRng):
     lastVisitDay: '',
     flags: {},
     tutorial: 0,
+    timeZone: '',
   };
 }
 
@@ -245,6 +248,7 @@ export function migrate(raw: unknown): SaveData | null {
     flags: (r.flags && typeof r.flags === 'object' ? r.flags : {}) as Record<string, boolean>,
     // Saves from before the tutorial existed shouldn't suddenly start one.
     tutorial: Math.floor(num(r.tutorial, TUTORIAL_DONE)),
+    timeZone: str(r.timeZone, ''),
   };
 }
 

@@ -9,7 +9,7 @@ import { DECOR_BY_ID, PLANTS_BY_ID, SPECIES, SPECIES_BY_ID, MYSTERY_EGG } from '
 import { grantXp, levelFromXp, xpForLevel } from './progress';
 import { uid } from './rng';
 import { newFish, type SaveData, type SimEvent } from './state';
-import { formatDuration, parseDuration } from './time';
+import { detectedTimeZone, formatClock, formatDuration, parseDuration } from './time';
 
 export interface ConsoleHost {
   save: SaveData;
@@ -150,7 +150,11 @@ export function runCommand(host: ConsoleHost, input: string): ConsoleOutput {
     }
 
     case 'time':
-      return out([`Sim clock: ${new Date(now).toLocaleString()}`, `Warp offset: ${formatDuration(save.timeOffset)}`]);
+      return out([
+        `Tank clock: ${formatClock(now, save.timeZone)} (${save.timeZone || `${detectedTimeZone()}, auto`})`,
+        `Real time (UTC): ${new Date(Date.now()).toISOString()}`,
+        `Warp offset: ${save.timeOffset ? formatDuration(save.timeOffset) : 'none'}`,
+      ]);
 
     case 'resettime':
       save.timeOffset = 0;

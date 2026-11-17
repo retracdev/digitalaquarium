@@ -17,7 +17,7 @@ export type FishShape =
   | 'ray'
   | 'koi'
   | 'angler';
-export type Pattern = 'none' | 'stripes' | 'spots' | 'bands' | 'stripe';
+export type Pattern = 'none' | 'stripes' | 'spots' | 'bands' | 'stripe' | 'patches';
 
 export interface FishLook {
   shape: FishShape;
@@ -83,6 +83,23 @@ export const SPECIES: SpeciesDef[] = [
     zone: 'top',
     behavior: 'wander',
     look: { shape: 'guppy', body: '#cfd8e8', accent: '#ff8a3d', fin: '#a07bff', pattern: 'none', size: 0.34 },
+  },
+  {
+    id: 'koi',
+    name: 'Koi',
+    blurb: 'A graceful pond classic. Every koi gets its own one-of-a-kind red patches.',
+    rarity: 'common',
+    unlockLevel: 1,
+    cost: 40,
+    hatchMs: 1 * HOUR,
+    growMs: 3 * HOUR,
+    bioload: 3,
+    hungerPerHour: 8,
+    shellsPerHour: 3.5,
+    xp: 14,
+    zone: 'middle',
+    behavior: 'glide',
+    look: { shape: 'koi', body: '#f6f1e7', accent: '#e4472f', fin: '#ffc9b0', pattern: 'patches', size: 0.6 },
   },
   {
     id: 'goldfish',

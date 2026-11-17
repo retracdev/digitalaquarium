@@ -27,9 +27,9 @@ Everything (fish, plants, decor, water, caustics) is generated in code with [thr
 | **Levels** | XP from feeding hungry fish, cleaning, hatching, collecting, growing plants and installing upgrades. Each level pays shells and unlocks new species, plants, decor, upgrades and themes (30 levels). |
 | **Hour-long waits** | Eggs incubate 1–12 h, plants grow 1–6 h, fry grow up over hours, upgrades install over 1–8 h, treasure chests refill every 4 h. |
 | **Daily streak** | Visiting on consecutive days pays a growing bonus. |
-| **Day & night** | Lighting follows your local clock (or force it in Tank → Care). Glowing creatures shine at night. |
+| **Day & night** | Lighting follows the tank clock, which uses your browser's time zone by default. You can pick a different zone, or force day or night, in Tank → Care. Glowing creatures shine at night. |
 
-13 species (Neon Tetra → Void Angler), 8 plants, 10 decorations, 4 tank sizes, 4 filters, 2 auto-feeders, 4 backdrop themes (including a space-themed *retrac Nebula*), 17 milestones and a Mystery Egg that can roll species above your level.
+14 species (Neon Tetra, Koi … Void Angler), 8 plants, 10 decorations, 4 tank sizes, 4 filters, 2 auto-feeders, 4 backdrop themes (including a space-themed *retrac Nebula*), 17 milestones and a Mystery Egg that can roll species above your level.
 
 ### Controls
 
