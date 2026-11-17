@@ -71,6 +71,8 @@ describe('migrate', () => {
     expect(s.fish).toEqual([]);
     expect(s.upgrades).toEqual({ filter: 0, tank: 0, feeder: 0 });
     expect(s.lights).toBe('auto');
+    // tanks saved before the tutorial existed don't get one sprung on them
+    expect(s.tutorial).toBe(-1);
   });
   it('drops unknown species', () => {
     const base = createNewSave('x', T0);

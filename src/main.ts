@@ -43,4 +43,9 @@ if (!webglAvailable()) {
     console.log(text);
     return text;
   };
+  console.info(
+    "%c🐠 Digital Aquarium keeper console%c\nPress ` on the page for the in-app console, or run commands here: aquarium('help'), aquarium('warp 2h'), aquarium('skip')",
+    'font-weight:bold;color:#6fe3d6',
+    'color:inherit',
+  );
 }

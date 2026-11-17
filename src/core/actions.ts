@@ -18,7 +18,7 @@ import {
 import { checkAchievements, grantXp, pushEvent } from './progress';
 import { clamp, defaultRng, uid, weightedPick, type Rng } from './rng';
 import { applyFeed, feederCapacity, fishGrowth, fishLoad, HUNGRY, tankStats } from './sim';
-import { newFish, type Fish, type LightMode, type SaveData, type SimEvent, type UpgradeKind } from './state';
+import { newFish, TUTORIAL_DONE, type Fish, type LightMode, type SaveData, type SimEvent, type UpgradeKind } from './state';
 import { dayKey, daysBetween } from './time';
 
 export interface ActionResult {
@@ -275,6 +275,32 @@ export function renameTank(save: SaveData, name: string, now: number): ActionRes
   if (!clean) return fail('Give your tank a name.');
   save.name = clean;
   return finish(save, now, 'Tank renamed.', []);
+}
+
+export const TUTORIAL_REWARD = 50;
+
+/** Remember how far through the tutorial this tank is (so a reload resumes it). */
+export function setTutorialStep(save: SaveData, step: number, now: number): ActionResult {
+  if (save.tutorial === TUTORIAL_DONE) return fail('');
+  save.tutorial = Math.max(0, Math.floor(step));
+  save.updatedAt = now;
+  return { ok: true, msg: '', events: [] };
+}
+
+/** Finish (with a small reward) or skip the tutorial. Only ever pays out once. */
+export function endTutorial(save: SaveData, completed: boolean, now: number): ActionResult {
+  if (save.tutorial === TUTORIAL_DONE) return fail('');
+  save.tutorial = TUTORIAL_DONE;
+  if (!completed) return finish(save, now, 'Tutorial skipped. You can replay it from the tank menu.', []);
+  save.shells += TUTORIAL_REWARD;
+  return finish(save, now, `Tutorial complete! +${TUTORIAL_REWARD} shells`, [], { shells: TUTORIAL_REWARD });
+}
+
+/** Start the tutorial over (from the tank menu). */
+export function restartTutorial(save: SaveData, now: number): ActionResult {
+  save.tutorial = 0;
+  save.updatedAt = now;
+  return { ok: true, msg: '', events: [] };
 }
 
 /** Daily visit streak + bonus. Safe to call on every tick. */

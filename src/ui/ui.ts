@@ -12,6 +12,7 @@ import { fmt, h } from './dom';
 import { icon, shellIcon, type IconName } from './icons';
 import { bar, costBtn, fishSwatch, hatcheryPanel, journalPanel, PANEL_TABS, PANEL_TITLES, shopPanel, tankPanel, timedBar, until, type PanelHost, type PanelName } from './panels';
 import { slotMenu, titleScreen } from './slots';
+import { Tutorial } from './tutorial';
 
 const LOGO = `${import.meta.env.BASE_URL}retrac-space-logo.png`;
 const QUALITY_KEY = 'daq_quality';
@@ -31,6 +32,7 @@ export class UI implements PanelHost {
   private menu: HTMLElement | null = null;
   private placementBar: HTMLElement | null = null;
   private console: DevConsole;
+  readonly tutorial: Tutorial;
   private dockButtons = new Map<string, HTMLButtonElement>();
   private hudParts!: Record<'lvl' | 'lvlXp' | 'lvlBar' | 'shells' | 'water' | 'clock' | 'clockIcon' | 'slotName' | 'alerts', HTMLElement>;
   private pointerDownInPanel = false;
@@ -45,6 +47,7 @@ export class UI implements PanelHost {
     private scene: AquariumScene,
   ) {
     this.console = new DevConsole(root, ctrl);
+    this.tutorial = new Tutorial(root, ctrl);
     this.buildHud();
     this.buildDock();
     root.append(this.toasts, this.tooltip);
@@ -83,6 +86,7 @@ export class UI implements PanelHost {
     this.closePanel();
     this.closeInspector();
     this.closeMenu();
+    this.tutorial.hide();
     this.title?.remove();
     this.title = titleScreen(this.ctrl, (slot, name) => this.openSlot(slot, name));
     this.root.append(this.title);
@@ -96,7 +100,8 @@ export class UI implements PanelHost {
     else this.ctrl.open(slot);
     this.title?.remove();
     this.title = null;
-    if (newName !== undefined) this.welcome();
+    // Every new tank starts the tutorial; a tank left mid-tutorial picks up where it was.
+    this.tutorial.resume();
   }
 
   private onSlotChanged(): void {
@@ -106,31 +111,11 @@ export class UI implements PanelHost {
     this.refresh();
   }
 
-  private welcome(): void {
-    const s = this.ctrl.save;
-    this.modal(`Welcome to ${s.name}!`, [
-      h('p', { class: 'muted', style: 'margin:0;line-height:1.6' }, 'Three neon tetras have moved in, and a guppy egg is already incubating — it hatches in a few minutes.'),
-      h(
-        'div',
-        { class: 'kv card', style: 'display:grid' },
-        h('span', null, 'Feed them'),
-        h('span', null, 'at least once a day'),
-        h('span', null, 'Clean the water'),
-        h('span', null, 'when it gets murky'),
-        h('span', null, 'Collect shells'),
-        h('span', null, 'from happy, grown fish'),
-        h('span', null, 'Eggs & upgrades'),
-        h('span', null, 'take real hours'),
-      ),
-      h('p', { class: 'muted', style: 'margin:0;font-size:12px' }, 'Hungry fish get weak, and fish left unfed for more than a day can pass away. Drag to look around, click a fish to meet it.'),
-    ]);
-  }
-
   // ------------------------------------------------------------ HUD
 
   private buildHud(): void {
     const slotName = h('span', { class: 'name' });
-    const slotBtn = h('button', { class: 'slot-btn', title: 'Switch tank', onclick: (e: Event) => (e.stopPropagation(), this.toggleMenu(slotBtn)) }, h('span', null, 'Tank'), slotName, icon('chevron'));
+    const slotBtn = h('button', { class: 'slot-btn', title: 'Switch tank', 'data-tut': 'slots', onclick: (e: Event) => (e.stopPropagation(), this.toggleMenu(slotBtn)) }, h('span', null, 'Tank'), slotName, icon('chevron'));
     slotBtn.querySelector('svg')!.setAttribute('style', 'width:14px;height:14px');
     const alertsEl = h('div', { class: 'alerts' });
     this.hudLeft.append(
@@ -150,9 +135,9 @@ export class UI implements PanelHost {
     const clock = h('span');
     const clockIcon = h('span', { style: 'display:flex;width:16px;height:16px' });
     this.hudRight.append(
-      h('div', { class: 'stat level', title: 'Level & XP' }, h('div', { class: 'row' }, lvl, lvlXp), h('div', { class: 'bar' }, lvlBar)),
+      h('div', { class: 'stat level', title: 'Level & XP', 'data-tut': 'level' }, h('div', { class: 'row' }, lvl, lvlXp), h('div', { class: 'bar' }, lvlBar)),
       h('div', { class: 'stat', title: 'Shells' }, shellIcon(), shells),
-      h('div', { class: 'stat', title: 'Water cleanliness' }, (() => {
+      h('div', { class: 'stat', title: 'Water cleanliness', 'data-tut': 'water' }, (() => {
         const d = icon('drop');
         d.setAttribute('style', 'width:16px;height:16px;color:var(--aqua)');
         return d;
@@ -180,7 +165,7 @@ export class UI implements PanelHost {
         this.dock.append(h('div', { class: 'dock-sep' }));
         continue;
       }
-      const btn = h('button', { class: 'dock-btn', title: `${label} (${key})`, onclick: fn }, icon(ic), h('span', { class: 'lbl' }, label));
+      const btn = h('button', { class: 'dock-btn', title: `${label} (${key})`, 'data-tut': id, onclick: fn }, icon(ic), h('span', { class: 'lbl' }, label));
       this.dockButtons.set(id, btn);
       this.dock.append(btn);
     }
@@ -284,6 +269,7 @@ export class UI implements PanelHost {
     this.panelSig = '';
     this.root.append(this.panelEl);
     this.refresh();
+    this.tutorial.notify(`panel:${name}`);
   }
 
   closePanel(): void {
@@ -376,11 +362,13 @@ export class UI implements PanelHost {
     );
     this.placementBar.querySelectorAll('svg').forEach((s) => s.setAttribute('style', 'width:14px;height:14px'));
     this.root.append(this.placementBar);
+    this.tutorial.position();
   }
 
   private hidePlacementBar(): void {
     this.placementBar?.remove();
     this.placementBar = null;
+    this.tutorial.position();
   }
 
   // ------------------------------------------------------------ inspector
@@ -396,6 +384,7 @@ export class UI implements PanelHost {
     }
     this.inspecting = p;
     this.inspectorSig = '';
+    if (p.kind === 'fish') this.tutorial.notify('pick:fish');
     if (p.kind === 'fish') this.scene.focusFish(p.id);
     else this.scene.focusFish(null);
     this.refreshInspector();
@@ -555,6 +544,7 @@ export class UI implements PanelHost {
   }
 
   private handleAction(name: string, data: unknown): void {
+    this.tutorial.notify(`action:${name}`);
     switch (name) {
       case 'feed':
         this.scene.dropFood();
@@ -631,6 +621,7 @@ export class UI implements PanelHost {
       'div',
       { style: 'display:flex;gap:6px;padding:6px 4px 2px;flex-wrap:wrap' },
       h('button', { class: 'btn small', onclick: () => (this.scene.resetCamera(), this.closeMenu()) }, 'Reset camera'),
+      h('button', { class: 'btn small', onclick: () => (this.closeMenu(), this.closePanel(), this.tutorial.restart()) }, 'Replay tutorial'),
       h(
         'button',
         {
