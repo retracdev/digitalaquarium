@@ -4,6 +4,7 @@ import { STARTER_EGG_MS } from '../core/catalog';
 import { TUTORIAL_DONE } from '../core/state';
 import { formatDuration } from '../core/time';
 import { h } from './dom';
+import { glassIcon } from './glass';
 
 /**
  * Things the tutorial can wait for. The UI reports them via `notify()`:
@@ -194,7 +195,7 @@ export class Tutorial {
     const card = h(
       'div',
       { class: 'tut-card glass', role: 'dialog', 'aria-live': 'polite', 'data-step': step.id },
-      h('div', { class: 'tut-top' }, h('span', { class: 'tut-count' }, `Tutorial · ${i + 1} of ${total}`), dots),
+      h('div', { class: 'tut-top' }, glassIcon('guide', 26), h('span', { class: 'tut-count' }, `Tutorial · ${i + 1} of ${total}`), dots),
       h('h3', null, resolve(step.title)),
       h('p', null, resolve(step.body)),
       step.hint ? h('div', { class: 'tut-hint' }, h('span', { class: 'tut-pulse' }), step.hint) : null,

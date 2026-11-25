@@ -21,6 +21,10 @@ const PATHS = {
   follow: '<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   rotate: '<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>',
   download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 114.2 2.1c-.9.7-1.8 1.2-1.8 2.4"/><circle cx="12" cy="17" r=".7" fill="currentColor"/>',
+  sparkle: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5v4M16.5 18.5h4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
 };
 
 export type IconName = keyof typeof PATHS;

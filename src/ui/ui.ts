@@ -9,16 +9,32 @@ import type { AquariumScene, PickResult } from '../render/scene';
 import { daylightAt } from '../render/scene';
 import { DevConsole } from './console';
 import { fmt, h } from './dom';
-import { icon, shellIcon, type IconName } from './icons';
+import { glassIcon, type GlassIconName } from './glass';
+import { icon, shellIcon } from './icons';
 import { bar, costBtn, fishSwatch, hatcheryPanel, journalPanel, PANEL_TABS, PANEL_TITLES, shopPanel, tankPanel, timedBar, until, type PanelHost, type PanelName } from './panels';
 import { slotMenu, titleScreen } from './slots';
 import { Tutorial } from './tutorial';
 
 const LOGO = `${import.meta.env.BASE_URL}retrac-space-logo.png`;
 const QUALITY_KEY = 'daq_quality';
+/** Below this width the layout stacks: stats under the brand, panels as bottom sheets. */
+const COMPACT = '(max-width: 900px)';
+
+interface ModalAction {
+  label: string;
+  kind?: 'primary' | 'ghost';
+  run?: () => void;
+}
+interface ModalOptions {
+  icon?: GlassIconName;
+  title: string;
+  sub?: string;
+  body: (HTMLElement | null)[];
+  actions?: ModalAction[];
+}
 
 export class UI implements PanelHost {
-  private hudLeft = h('div', { class: 'hud-left' });
+  private hud = h('div', { class: 'hud' });
   private hudRight = h('div', { class: 'hud-right glass' });
   private dock = h('nav', { class: 'dock glass' });
   private toasts = h('div', { class: 'toasts' });
@@ -31,6 +47,8 @@ export class UI implements PanelHost {
   private title: HTMLElement | null = null;
   private menu: HTMLElement | null = null;
   private placementBar: HTMLElement | null = null;
+  private modalEl: HTMLElement | null = null;
+  private modalPrimary: (() => void) | null = null;
   private console: DevConsole;
   readonly tutorial: Tutorial;
   private dockButtons = new Map<string, HTMLButtonElement>();
@@ -67,6 +85,8 @@ export class UI implements PanelHost {
       else ctrl.buyDecor(req.type, nx, nz, rot);
     };
     scene.onPlacementEnd = () => this.hidePlacementBar();
+    scene.onPlaceBlocked = () => this.toast('Too close to something else. Try another spot.', 'warn');
+    window.addEventListener('pointerup', () => setTimeout(() => (this.pointerDownInPanel = false), 0));
 
     const q = safeGet(QUALITY_KEY);
     if (q === 'low') scene.setQuality('low');
@@ -86,10 +106,13 @@ export class UI implements PanelHost {
     this.closePanel();
     this.closeInspector();
     this.closeMenu();
+    this.closeModal();
     this.tutorial.hide();
     this.title?.remove();
     this.title = titleScreen(this.ctrl, (slot, name) => this.openSlot(slot, name));
     this.root.append(this.title);
+    this.root.classList.add('at-title');
+    this.scene.attract = true;
     document.title = 'Digital Aquarium · retrac.space';
   }
 
@@ -100,6 +123,9 @@ export class UI implements PanelHost {
     else this.ctrl.open(slot);
     this.title?.remove();
     this.title = null;
+    this.root.classList.remove('at-title');
+    this.scene.attract = false;
+    this.scene.resetCamera();
     // Every new tank starts the tutorial; a tank left mid-tutorial picks up where it was.
     this.tutorial.resume();
   }
@@ -115,17 +141,14 @@ export class UI implements PanelHost {
 
   private buildHud(): void {
     const slotName = h('span', { class: 'name' });
-    const slotBtn = h('button', { class: 'slot-btn', title: 'Switch tank', 'data-tut': 'slots', onclick: (e: Event) => (e.stopPropagation(), this.toggleMenu(slotBtn)) }, h('span', null, 'Tank'), slotName, icon('chevron'));
-    slotBtn.querySelector('svg')!.setAttribute('style', 'width:14px;height:14px');
+    const slotBtn = h('button', { class: 'slot-btn', title: 'Tanks & settings', 'data-tut': 'slots', onclick: (e: Event) => (e.stopPropagation(), this.toggleMenu(slotBtn)) }, slotName, icon('chevron'));
     const alertsEl = h('div', { class: 'alerts' });
-    this.hudLeft.append(
-      h(
-        'div',
-        { class: 'brand glass' },
-        h('div', { class: 'wordmark' }, h('img', { src: LOGO, alt: 'retrac.space' }), h('span', { class: 'title' }, 'Digital Aquarium')),
-        h('div', { style: 'position:relative' }, slotBtn),
-      ),
-      alertsEl,
+    const brand = h(
+      'div',
+      { class: 'brand glass' },
+      glassIcon('fish', 34),
+      h('div', { class: 'wordmark' }, h('img', { src: LOGO, alt: 'retrac.space' }), h('span', { class: 'title' }, 'Digital Aquarium')),
+      slotBtn,
     );
     const lvl = h('span');
     const lvlXp = h('small');
@@ -133,27 +156,24 @@ export class UI implements PanelHost {
     const shells = h('span');
     const water = h('span');
     const clock = h('span');
-    const clockIcon = h('span', { style: 'display:flex;width:16px;height:16px' });
+    const clockIcon = h('span', { class: 'ico16' });
     this.hudRight.append(
       h('div', { class: 'stat level', title: 'Level & XP', 'data-tut': 'level' }, h('div', { class: 'row' }, lvl, lvlXp), h('div', { class: 'bar' }, lvlBar)),
       h('div', { class: 'stat', title: 'Shells' }, shellIcon(), shells),
-      h('div', { class: 'stat', title: 'Water cleanliness', 'data-tut': 'water' }, (() => {
-        const d = icon('drop');
-        d.setAttribute('style', 'width:16px;height:16px;color:var(--aqua)');
-        return d;
-      })(), water),
+      h('div', { class: 'stat', title: 'Water cleanliness', 'data-tut': 'water' }, h('span', { class: 'ico16 aqua' }, icon('drop')), water),
       h('div', { class: 'stat clock', title: 'Tank clock (follows your local time)' }, clockIcon, clock),
     );
     this.hudParts = { lvl, lvlXp, lvlBar, shells, water, clock, clockIcon, slotName, alerts: alertsEl };
-    this.root.append(this.hudLeft, this.hudRight);
+    this.hud.append(brand, this.hudRight, alertsEl);
+    this.root.append(this.hud);
   }
 
   private buildDock(): void {
-    const items: [string, string, IconName, () => void, string][] = [
+    const items: [string, string, GlassIconName, () => void, string][] = [
       ['feed', 'Feed', 'feed', () => this.ctrl.feed(), 'F'],
       ['clean', 'Clean', 'clean', () => this.ctrl.clean(), 'C'],
-      ['collect', 'Collect', 'collect', () => this.ctrl.collect(), 'G'],
-      ['sep', '', 'close', () => {}, ''],
+      ['collect', 'Collect', 'collect', () => this.collectAll(), 'G'],
+      ['sep', '', 'fish', () => {}, ''],
       ['hatchery', 'Hatchery', 'hatchery', () => this.togglePanel('hatchery'), 'H'],
       ['shop', 'Shop', 'shop', () => this.togglePanel('shop'), 'S'],
       ['tank', 'Tank', 'tank', () => this.togglePanel('tank'), 'T'],
@@ -165,20 +185,30 @@ export class UI implements PanelHost {
         this.dock.append(h('div', { class: 'dock-sep' }));
         continue;
       }
-      const btn = h('button', { class: 'dock-btn', title: `${label} (${key})`, 'data-tut': id, onclick: fn }, icon(ic), h('span', { class: 'lbl' }, label));
+      const btn = h('button', { class: 'dock-btn', title: `${label} (${key})`, 'aria-label': label, 'data-tut': id, onclick: fn }, h('span', { class: 'ico' }, glassIcon(ic, 42)), h('span', { class: 'lbl' }, label));
       this.dockButtons.set(id, btn);
       this.dock.append(btn);
     }
     this.root.append(this.dock);
   }
 
+  /** Collect waiting shells and open any treasure chests that are ready. */
+  private collectAll(): void {
+    if (!this.ctrl.loaded) return;
+    const s = this.ctrl.save;
+    const now = this.ctrl.now();
+    const chests = s.decor.filter((d) => d.lootAt !== undefined && d.lootAt <= now);
+    if (Math.floor(s.pendingShells) >= 1 || !chests.length) this.ctrl.collect();
+    for (const c of chests) this.ctrl.openChest(c.id);
+  }
+
   private setBadge(id: string, text: string | null, tone = ''): void {
-    const btn = this.dockButtons.get(id)!;
-    let badge = btn.querySelector('.badge');
+    const holder = this.dockButtons.get(id)!.querySelector('.ico')!;
+    let badge = holder.querySelector('.badge');
     if (!text) return void badge?.remove();
     if (!badge) {
       badge = h('span', { class: 'badge' });
-      btn.append(badge);
+      holder.append(badge);
     }
     badge.className = `badge ${tone}`;
     badge.textContent = text;
@@ -221,13 +251,14 @@ export class UI implements PanelHost {
     clean.classList.toggle('urgent', s.water < 25);
     this.setBadge('clean', s.water < 50 ? `${Math.round(s.water)}%` : null, s.water < 25 ? 'bad' : 'warn');
     const pend = Math.floor(s.pendingShells);
-    this.setBadge('collect', pend >= 1 ? (pend >= pendingCap(s) ? 'full' : fmt(pend)) : null, pend >= pendingCap(s) ? 'warn' : '');
+    const chestReady = s.decor.some((x) => x.lootAt !== undefined && x.lootAt <= now);
+    const full = pend >= pendingCap(s);
+    this.setBadge('collect', pend >= 1 ? (full ? 'full' : fmt(pend)) : chestReady ? '!' : null, full || (pend < 1 && chestReady) ? 'warn' : '');
+    this.dockButtons.get('collect')!.classList.toggle('attention', full);
     const ready = s.eggs.filter((e) => e.hatchAt <= now).length;
     this.setBadge('hatchery', ready ? String(ready) : null);
     this.dockButtons.get('hatchery')!.classList.toggle('attention', ready > 0);
-    const chestReady = s.decor.some((x) => x.lootAt !== undefined && x.lootAt <= now);
     this.setBadge('tank', s.pending.length ? '⋯' : null);
-    if (chestReady) this.setBadge('collect', '!', 'warn');
     for (const [id, btn] of this.dockButtons) btn.classList.toggle('active', this.panel === id);
 
     this.refreshPanel();
@@ -260,12 +291,13 @@ export class UI implements PanelHost {
   openPanel(name: PanelName, tab?: string): void {
     if (!this.ctrl.loaded) return;
     this.scene.cancelPlacement();
+    // On small screens the panel is a bottom sheet and would sit on top of the fish card.
+    if (window.matchMedia(COMPACT).matches) this.closeInspector();
     this.panel = name;
     if (tab) this.tab[name] = tab;
     this.panelEl?.remove();
     this.panelEl = h('aside', { class: 'panel glass' });
     this.panelEl.addEventListener('pointerdown', () => (this.pointerDownInPanel = true));
-    window.addEventListener('pointerup', () => setTimeout(() => (this.pointerDownInPanel = false), 0));
     this.panelSig = '';
     this.root.append(this.panelEl);
     this.refresh();
@@ -330,8 +362,9 @@ export class UI implements PanelHost {
     const head = h(
       'div',
       { class: 'panel-head' },
-      h('div', null, h('h2', null, PANEL_TITLES[name]), h('div', { class: 'sub' }, sub)),
-      h('button', { class: 'btn ghost icon-btn', title: 'Close (Esc)', onclick: () => this.closePanel() }, icon('close')),
+      glassIcon(name, 38),
+      h('div', { class: 'grow' }, h('h2', null, PANEL_TITLES[name]), h('div', { class: 'sub' }, sub)),
+      h('button', { class: 'btn ghost icon-btn', title: 'Close (Esc)', 'aria-label': 'Close', onclick: () => this.closePanel() }, icon('close')),
     );
     const tabsEl = tabs.length
       ? h('div', { class: 'tabs' }, ...tabs.map((t) => h('button', { class: `tab${this.tab[name] === t.id ? ' active' : ''}`, onclick: () => this.setTab(name, t.id) }, t.label)))
@@ -360,7 +393,6 @@ export class UI implements PanelHost {
       kind === 'decor' ? h('button', { class: 'btn small', onclick: () => this.scene.rotatePlacement() }, icon('rotate'), 'Rotate (R)') : null,
       h('button', { class: 'btn small ghost', onclick: () => this.scene.cancelPlacement() }, 'Cancel (Esc)'),
     );
-    this.placementBar.querySelectorAll('svg').forEach((s) => s.setAttribute('style', 'width:14px;height:14px'));
     this.root.append(this.placementBar);
     this.tutorial.position();
   }
@@ -425,17 +457,21 @@ export class UI implements PanelHost {
       const nameBtn = h('button', { class: 'name', title: 'Rename', onclick: () => rename() }, f.name);
       const rename = () => {
         const input = h('input', { class: 'text', value: f.name, maxlength: '18' }) as HTMLInputElement;
-        const commit = () => {
-          this.ctrl.rename(f.id, input.value);
+        let done = false;
+        const finish = (save: boolean) => {
+          if (done) return;
+          done = true;
+          const name = input.value.trim();
+          if (save && name && name !== f.name) this.ctrl.rename(f.id, name);
           this.inspectorSig = '';
           input.blur();
           this.refreshInspector();
         };
         input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') commit();
-          if (e.key === 'Escape') (this.inspectorSig = ''), input.blur(), this.refreshInspector();
+          if (e.key === 'Enter') finish(true);
+          if (e.key === 'Escape') finish(false);
         });
-        input.addEventListener('blur', () => setTimeout(commit, 0), { once: true });
+        input.addEventListener('blur', () => setTimeout(() => finish(true), 0), { once: true });
         nameBtn.replaceWith(input);
         input.focus();
         input.select();
@@ -448,8 +484,8 @@ export class UI implements PanelHost {
           'div',
           { class: 'head' },
           fishSwatch(def),
-          h('div', { class: 'grow', style: 'flex:1;min-width:0' }, nameBtn, h('div', { class: 'muted', style: 'font-size:12px;font-weight:700' }, `${def.name} · ${def.rarity}`)),
-          h('button', { class: 'btn ghost icon-btn', onclick: () => this.closeInspector() }, icon('close')),
+          h('div', { class: 'grow' }, nameBtn, h('div', { class: 'sub' }, `${def.name} · ${def.rarity}`)),
+          h('button', { class: 'btn ghost icon-btn', 'aria-label': 'Close', onclick: () => this.closeInspector() }, icon('close')),
         ),
         meter('Fullness', fullness / 100, f.hunger >= 100 ? 'Starving!' : `${Math.round(fullness)}%`, f.hunger >= HUNGRY ? 'bad' : fullness < 50 ? 'warn' : 'good'),
         meter('Health', f.health / 100, `${Math.round(f.health)}%`, f.health < 40 ? 'bad' : f.health < 70 ? 'warn' : 'good'),
@@ -492,8 +528,8 @@ export class UI implements PanelHost {
         h(
           'div',
           { class: 'head' },
-          h('div', { class: 'grow', style: 'flex:1' }, h('div', { class: 'name', style: 'font-size:18px;font-weight:800' }, def.name), h('div', { class: 'muted', style: 'font-size:12px' }, def.blurb)),
-          h('button', { class: 'btn ghost icon-btn', onclick: () => this.closeInspector() }, icon('close')),
+          h('div', { class: 'grow' }, h('div', { class: 'name' }, def.name), h('div', { class: 'sub' }, def.blurb)),
+          h('button', { class: 'btn ghost icon-btn', 'aria-label': 'Close', onclick: () => this.closeInspector() }, icon('close')),
         ),
         isPlant
           ? prog >= 1
@@ -535,11 +571,11 @@ export class UI implements PanelHost {
 
   private handleEvents(events: SimEvent[], away: boolean): void {
     for (const e of events) if (e.kind === 'fishDied' && e.refId) this.scene.markDying(e.refId);
-    const lastLevel = [...events].reverse().find((e) => e.kind === 'levelUp');
-    if (lastLevel) this.celebrate(lastLevel.text);
     const shown = events.filter((e) => e.kind !== 'levelUp' && e.kind !== 'autoFeed');
     // Lots happening at once (offline catch-up, a time warp) reads better as a summary.
     if (away || shown.length > 4) return this.awaySummary(events);
+    const lastLevel = [...events].reverse().find((e) => e.kind === 'levelUp');
+    if (lastLevel) this.celebrate(lastLevel.text);
     for (const e of shown) this.toast(e.text, e.tone);
   }
 
@@ -575,7 +611,13 @@ export class UI implements PanelHost {
 
   private celebrate(text: string): void {
     const [head, ...rest] = text.split(' · ');
-    const el = h('div', { class: 'levelup' }, h('div', { class: 'big' }, head.split('!')[0] + '!'), h('div', { class: 'small' }, [head.split('!')[1], ...rest].filter(Boolean).join(' · ')));
+    const el = h(
+      'div',
+      { class: 'levelup' },
+      glassIcon('level', 72),
+      h('div', { class: 'big' }, head.split('!')[0] + '!'),
+      h('div', { class: 'small' }, [head.split('!')[1], ...rest].map((x) => x?.trim()).filter(Boolean).join(' · ')),
+    );
     this.root.append(el);
     setTimeout(() => el.remove(), 3300);
   }
@@ -587,21 +629,53 @@ export class UI implements PanelHost {
     const seen = new Set<string>();
     const lines = important.filter((e) => (seen.has(e.text) ? false : (seen.add(e.text), true))).slice(-14);
     const pend = Math.floor(s.pendingShells);
-    this.modal(lost.length ? 'While you were away…' : 'Welcome back!', [
-      lost.length
-        ? h('p', { style: 'margin:0;color:var(--bad);font-weight:700' }, `${lost.length} fish didn't make it. Remember to feed your tank at least once a day.`)
-        : h('p', { class: 'muted', style: 'margin:0' }, 'Here is what happened in your tank.'),
-      h('div', { style: 'display:flex;flex-direction:column;gap:6px' }, ...lines.map((e) => h('div', { class: `log-item ${e.tone}` }, h('span', null, e.text)))),
-      pend >= 1 ? h('div', { class: 'card' }, shellIcon(), h('div', { class: 'grow' }, h('h3', null, `${fmt(pend)} shells waiting`), h('p', null, 'Your fish made these while you were gone.')), h('button', { class: 'btn small primary', onclick: () => this.ctrl.collect() }, 'Collect')) : null,
-    ]);
+    // Nothing worth a popup: the HUD already shows hunger and water.
+    if (!lines.length && pend < 1) return;
+    this.modal({
+      icon: lost.length ? 'heart' : 'fish',
+      title: lost.length ? 'While you were away…' : 'Welcome back!',
+      sub: lost.length
+        ? `${lost.length} fish didn't make it. Feed your tank at least once a day.`
+        : lines.length
+          ? 'Here is what happened in your tank.'
+          : 'All quiet in the tank while you were gone.',
+      body: [
+        lines.length ? h('div', { class: 'log-list' }, ...lines.map((e) => h('div', { class: `log-item ${e.tone}` }, h('span', null, e.text)))) : null,
+        pend >= 1 ? h('div', { class: 'card shells-card' }, shellIcon(), h('div', { class: 'grow' }, h('h3', null, `${fmt(pend)} shells waiting`), h('p', null, 'Your fish made these while you were gone.'))) : null,
+      ],
+      // One button does it: collecting also closes the popup.
+      actions: pend >= 1 ? [{ label: 'Later', kind: 'ghost' }, { label: `Collect ${fmt(pend)} shells`, kind: 'primary', run: () => this.collectAll() }] : [{ label: 'Back to the tank', kind: 'primary' }],
+    });
   }
 
-  modal(title: string, body: (HTMLElement | null)[]): void {
+  modal(opts: ModalOptions): void {
+    this.closeModal();
+    const actions: ModalAction[] = opts.actions ?? [{ label: 'OK', kind: 'primary' }];
+    const act = (a: ModalAction) => () => {
+      this.closeModal();
+      a.run?.();
+    };
     const overlay = h('div', { class: 'overlay' });
-    const close = () => overlay.remove();
-    overlay.addEventListener('click', (e) => e.target === overlay && close());
-    overlay.append(h('div', { class: 'modal glass' }, h('h2', null, title), ...body, h('button', { class: 'btn primary', style: 'align-self:flex-end', onclick: close }, 'Back to the tank')));
+    overlay.addEventListener('click', (e) => e.target === overlay && this.closeModal());
+    overlay.append(
+      h(
+        'div',
+        { class: 'modal glass', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title },
+        h('div', { class: 'modal-head' }, opts.icon ? glassIcon(opts.icon, 52) : null, h('div', { class: 'grow' }, h('h2', null, opts.title), opts.sub ? h('p', null, opts.sub) : null)),
+        h('div', { class: 'modal-body' }, ...opts.body),
+        h('div', { class: 'modal-actions' }, ...actions.map((a) => h('button', { class: `btn ${a.kind ?? ''}`, onclick: act(a) }, a.label))),
+      ),
+    );
+    const primary = actions.find((a) => a.kind === 'primary') ?? actions[actions.length - 1];
+    this.modalPrimary = act(primary);
+    this.modalEl = overlay;
     this.root.append(overlay);
+  }
+
+  private closeModal(): void {
+    this.modalEl?.remove();
+    this.modalEl = null;
+    this.modalPrimary = null;
   }
 
   // ------------------------------------------------------------ menus
@@ -617,29 +691,25 @@ export class UI implements PanelHost {
         this.showTitle();
       },
     );
-    const settings = h(
-      'div',
-      { style: 'display:flex;gap:6px;padding:6px 4px 2px;flex-wrap:wrap' },
-      h('button', { class: 'btn small', onclick: () => (this.scene.resetCamera(), this.closeMenu()) }, 'Reset camera'),
-      h('button', { class: 'btn small', onclick: () => (this.closeMenu(), this.closePanel(), this.tutorial.restart()) }, 'Replay tutorial'),
-      h(
-        'button',
-        {
-          class: 'btn small',
-          onclick: () => {
-            const q = this.scene.quality === 'high' ? 'low' : 'high';
-            this.scene.setQuality(q);
-            safeSet(QUALITY_KEY, q);
-            this.toast(`Graphics: ${q === 'high' ? 'High (glow effects on)' : 'Low (faster)'}`);
-            this.closeMenu();
-          },
-        },
-        `Graphics: ${this.scene.quality === 'high' ? 'High' : 'Low'}`,
-      ),
+    const item = (ic: Parameters<typeof icon>[0], label: string, fn: () => void) => h('button', { class: 'item', onclick: fn }, h('span', { class: 'n' }, icon(ic)), label);
+    this.menu.append(
+      h('hr'),
+      item('rotate', 'Reset camera', () => (this.scene.resetCamera(), this.closeMenu())),
+      item('help', 'Replay tutorial', () => (this.closeMenu(), this.closePanel(), this.tutorial.restart())),
+      item('sparkle', `Graphics: ${this.scene.quality === 'high' ? 'High' : 'Low'}`, () => {
+        const q = this.scene.quality === 'high' ? 'low' : 'high';
+        this.scene.setQuality(q);
+        safeSet(QUALITY_KEY, q);
+        this.toast(`Graphics: ${q === 'high' ? 'High (glow effects on)' : 'Low (faster)'}`);
+        this.closeMenu();
+      }),
     );
-    this.menu.append(settings);
-    anchor.parentElement!.append(this.menu);
-    this.menu.querySelectorAll('svg').forEach((s) => s.setAttribute('style', 'width:16px;height:16px'));
+    // Lives at the top level, not inside the brand chip: a backdrop blur nested in
+    // another one doesn't render, which let the tank show straight through the menu.
+    const r = anchor.getBoundingClientRect();
+    this.menu.style.top = `${Math.round(r.bottom + 10)}px`;
+    this.menu.style.left = `${Math.round(Math.max(10, Math.min(r.left, window.innerWidth - 310)))}px`;
+    this.root.append(this.menu);
     setTimeout(() => window.addEventListener('click', this.outsideMenu), 0);
   }
   private outsideMenu = (e: MouseEvent) => {
@@ -652,9 +722,11 @@ export class UI implements PanelHost {
   }
 
   private photoMode(): void {
-    if (!this.ctrl.loaded) return;
+    if (!this.ctrl.loaded || document.body.classList.contains('photo')) return;
     this.closePanel();
     this.closeInspector();
+    this.closeMenu();
+    this.scene.cancelPlacement();
     document.body.classList.add('photo');
     const exit = () => {
       document.body.classList.remove('photo');
@@ -681,7 +753,6 @@ export class UI implements PanelHost {
       ),
       h('button', { class: 'btn', onclick: exit }, 'Done'),
     );
-    bar.querySelectorAll('svg').forEach((s) => s.setAttribute('style', 'width:16px;height:16px'));
     this.root.append(bar);
   }
 
@@ -699,8 +770,16 @@ export class UI implements PanelHost {
       }
       if (typing || !this.ctrl.loaded || this.title || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
+      if (this.modalEl) {
+        if (k === 'escape') this.closeModal();
+        else if (k === 'enter') this.modalPrimary?.();
+        return;
+      }
+      // Photo mode hides the whole HUD, so only its own Escape handler applies.
+      if (document.body.classList.contains('photo')) return;
       if (k === 'escape') {
-        if (this.scene.placing) this.scene.cancelPlacement();
+        if (this.menu) this.closeMenu();
+        else if (this.scene.placing) this.scene.cancelPlacement();
         else if (this.panel) this.closePanel();
         else if (this.inspecting) this.closeInspector();
         else this.scene.follow(null);
@@ -713,7 +792,7 @@ export class UI implements PanelHost {
       const map: Record<string, () => void> = {
         f: () => this.ctrl.feed(),
         c: () => this.ctrl.clean(),
-        g: () => this.ctrl.collect(),
+        g: () => this.collectAll(),
         h: () => this.togglePanel('hatchery'),
         s: () => this.togglePanel('shop'),
         t: () => this.togglePanel('tank'),
