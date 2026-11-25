@@ -33,7 +33,17 @@ export interface PlacementRequest {
 interface ItemView<T> {
   rig: T;
   type: string;
+  /** Rough footprint radius on the sand, used to stop items being stacked inside each other. */
+  radius: number;
 }
+
+const boxSize = new THREE.Vector3();
+/** Footprint radius of a freshly built (unscaled, unrotated) model. */
+function footprint(group: THREE.Object3D): number {
+  new THREE.Box3().setFromObject(group).getSize(boxSize);
+  return THREE.MathUtils.clamp(Math.max(boxSize.x, boxSize.z) * 0.35, 0.1, 1.1);
+}
+const BLOCKED_TINT = new THREE.Color('#ff5a6e');
 
 const MURK_FOG = new THREE.Color('#4e5a2a');
 
@@ -94,13 +104,17 @@ export class AquariumScene {
 
   selectedFish: string | null = null;
   followId: string | null = null;
-  private placement: (PlacementRequest & { ghost: THREE.Group; rot: number; valid: boolean; nx: number; nz: number }) | null = null;
+  /** Title-screen mode: the camera drifts slowly instead of following input. */
+  attract = false;
+  private placement: (PlacementRequest & { ghost: THREE.Group; rot: number; valid: boolean; blocked: boolean; radius: number; nx: number; nz: number }) | null = null;
 
   /** UI hooks */
   onPick: (p: PickResult | null) => void = () => {};
   onHover: (info: { text: string; x: number; y: number } | null) => void = () => {};
   onPlace: (req: PlacementRequest, nx: number, nz: number, rot: number) => void = () => {};
   onPlacementEnd: () => void = () => {};
+  /** The player clicked the sand somewhere another item is in the way. */
+  onPlaceBlocked: () => void = () => {};
 
   constructor(
     private host: HTMLElement,
@@ -289,7 +303,8 @@ export class AquariumScene {
     for (const p of save.plants) {
       let view = this.plants.get(p.id);
       if (!view) {
-        view = { rig: buildPlant(p.type, hashString(p.id)), type: p.type };
+        const rig = buildPlant(p.type, hashString(p.id));
+        view = { rig, type: p.type, radius: footprint(rig.group) };
         view.rig.group.userData.pick = { kind: 'plant', id: p.id };
         for (const m of view.rig.glow) m.userData.baseGlow = m.emissiveIntensity;
         this.plants.set(p.id, view);
@@ -311,7 +326,8 @@ export class AquariumScene {
     for (const d of save.decor) {
       let view = this.decor.get(d.id);
       if (!view) {
-        view = { rig: buildDecor(d.type, hashString(d.id)), type: d.type };
+        const rig = buildDecor(d.type, hashString(d.id));
+        view = { rig, type: d.type, radius: footprint(rig.group) };
         view.rig.group.userData.pick = { kind: 'decor', id: d.id };
         for (const m of view.rig.glow) m.userData.baseGlow = m.emissiveIntensity;
         this.decor.set(d.id, view);
@@ -368,19 +384,22 @@ export class AquariumScene {
     this.cancelPlacement(false);
     const rig = req.kind === 'plant' ? buildPlant(req.type, 7) : buildDecor(req.type, 7);
     const ghost = rig.group;
+    const radius = footprint(ghost);
     ghost.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
+      if (o instanceof THREE.Mesh && !Array.isArray(o.material)) {
         const m = (o.material as THREE.Material).clone();
         m.transparent = true;
         m.opacity = 0.6;
         m.depthWrite = false;
+        const c = (m as THREE.MeshStandardMaterial).color;
+        if (c) m.userData.baseColor = c.clone();
         o.material = m;
       }
     });
     this.tank.group.add(ghost);
     ghost.visible = false;
     const existing = req.moveId ? this.ctrl.save.decor.find((d) => d.id === req.moveId) : undefined;
-    this.placement = { ...req, ghost, rot: existing?.rot ?? Math.random() * Math.PI * 2, valid: false, nx: 0, nz: 0 };
+    this.placement = { ...req, ghost, radius, rot: existing?.rot ?? Math.random() * Math.PI * 2, valid: false, blocked: false, nx: 0, nz: 0 };
     if (req.moveId) {
       const view = this.decor.get(req.moveId) ?? this.plants.get(req.moveId);
       if (view) view.rig.group.visible = false;
@@ -460,7 +479,7 @@ export class AquariumScene {
         const p = this.placement;
         this.onPlace({ kind: p.kind, type: p.type, moveId: p.moveId }, p.nx, p.nz, p.rot);
         this.cancelPlacement();
-      }
+      } else if (this.placement.blocked) this.onPlaceBlocked();
       return;
     }
     const pick = this.pickAt();
@@ -477,16 +496,44 @@ export class AquariumScene {
     if (!p) return;
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hit = this.raycaster.intersectObject(this.tank.sand, false)[0];
-    p.valid = !!hit;
+    p.valid = false;
+    p.blocked = false;
     p.ghost.visible = !!hit;
     if (!hit) return;
     const local = this.tank.group.worldToLocal(hit.point.clone());
     const n = this.tank.toNorm(local.x, local.z);
-    p.nx = THREE.MathUtils.clamp(n.x, -0.46, 0.46);
-    p.nz = THREE.MathUtils.clamp(n.z, -0.46, 0.46);
+    // Keep the whole model inside the glass, not just its centre.
+    const limX = THREE.MathUtils.clamp(0.5 - p.radius / this.tank.innerW, 0.05, 0.46);
+    const limZ = THREE.MathUtils.clamp(0.5 - p.radius / this.tank.innerD, 0.05, 0.46);
+    p.nx = THREE.MathUtils.clamp(n.x, -limX, limX);
+    p.nz = THREE.MathUtils.clamp(n.z, -limZ, limZ);
     this.tank.toWorld(p.nx, p.nz, p.ghost.position);
+    p.blocked = this.overlaps(p.ghost.position, p.radius, p.kind, p.moveId);
+    p.valid = !p.blocked;
     p.ghost.rotation.y = p.rot;
     p.ghost.position.y += Math.sin(this.time * 4) * 0.03;
+    if (p.ghost.userData.blocked !== p.blocked) {
+      p.ghost.userData.blocked = p.blocked;
+      p.ghost.traverse((o) => {
+        const m = o instanceof THREE.Mesh && !Array.isArray(o.material) ? (o.material as THREE.MeshStandardMaterial) : null;
+        const base = m?.userData.baseColor as THREE.Color | undefined;
+        if (m && base) m.color.copy(base).lerp(BLOCKED_TINT, p.blocked ? 0.75 : 0);
+      });
+    }
+  }
+
+  /** Would an item of this size at `pos` sit inside another plant or decoration? */
+  private overlaps(pos: THREE.Vector3, radius: number, kind: 'plant' | 'decor', ignoreId?: string): boolean {
+    const hit = (views: Map<string, ItemView<PlantRig | DecorRig>>, slack: number) => {
+      for (const [id, v] of views) {
+        if (id === ignoreId) continue;
+        const o = v.rig.group.position;
+        if (Math.hypot(o.x - pos.x, o.z - pos.z) < (radius + v.radius) * slack) return true;
+      }
+      return false;
+    };
+    // Plants may grow in tight clumps; anything involving decor needs real clearance.
+    return hit(this.plants, kind === 'plant' ? 0.4 : 0.85) || hit(this.decor, 0.85);
   }
 
   // ---------------------------------------------------------- frame
@@ -588,6 +635,7 @@ export class AquariumScene {
     this.shafts.update(t, this.light, this.murk);
     this.sparkles.update(dt);
     this.updatePlacement();
+    this.tank.setHoodFade(this.camera.position.y);
 
     // Selection marker + follow cam
     const sel = this.selectedFish ? this.fish.get(this.selectedFish) : undefined;
@@ -601,6 +649,13 @@ export class AquariumScene {
       const delta = followed.pos.clone().sub(this.controls.target).multiplyScalar(Math.min(1, dt * 2.5));
       this.controls.target.add(delta);
       this.camera.position.add(delta);
+    }
+    if (this.attract) {
+      // Behind the title screen: a slow, hands-off drift around the front of the tank.
+      const a = Math.sin(t * 0.11) * 0.42;
+      const d = 13.5 * Math.max(1, this.tank.width / 8) ** 0.8;
+      this.controls.target.set(0, 2, 0);
+      this.camera.position.set(Math.sin(a) * d, 3.2, Math.cos(a) * d);
     }
     this.controls.update();
 

@@ -33,7 +33,7 @@ Everything (fish, plants, decor, water, caustics) is generated in code with [thr
 
 ### Controls
 
-A short guided tutorial runs on every new tank (skippable; replay it from the tank menu). Drag to orbit, scroll to zoom, double-click to reset the camera. Click a fish to inspect, rename, follow or rehome it; click plants/decor to move or remove them; click a glowing chest to loot it.
+A short guided tutorial runs on every new tank (skippable; replay it from the tank menu). Drag to orbit, scroll to zoom, double-click to reset the camera. Click a fish to inspect, rename, follow or rehome it; click plants/decor to move or remove them; click a glowing chest to loot it. **Collect** gathers waiting shells and opens every ready chest in one go. Items can't be placed inside each other or through the glass; the placement ghost turns red when a spot is taken.
 
 Shortcuts: **F** feed · **C** clean · **G** collect · **H** hatchery · **S** shop · **T** tank · **J** journal · **P** photo · **Esc** close.
 

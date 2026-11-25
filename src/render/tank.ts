@@ -46,7 +46,10 @@ export class Tank {
   });
   private tintMat = new THREE.MeshBasicMaterial({ color: '#3fa7c9', transparent: true, opacity: 0.08, depthWrite: false, fog: false });
   private algaeMat = new THREE.MeshBasicMaterial({ color: '#4f6b1f', transparent: true, opacity: 0, depthWrite: false, fog: false, alphaMap: algaeTexture() });
-  private lampMat = new THREE.MeshStandardMaterial({ color: '#16141f', emissive: '#fff4d6', emissiveIntensity: 1, roughness: 0.4, fog: false });
+  private lampMat = new THREE.MeshStandardMaterial({ color: '#16141f', emissive: '#fff4d6', emissiveIntensity: 1, roughness: 0.4, fog: false, transparent: true });
+  private hoodMat = new THREE.MeshStandardMaterial({ color: '#1c1a27', roughness: 0.35, metalness: 0.4, fog: false, transparent: true });
+  private skirtMat = new THREE.MeshStandardMaterial({ color: '#b39b6c', roughness: 1, side: THREE.DoubleSide });
+  private hood: THREE.Mesh | null = null;
   private theme!: ThemeDef;
   private sandBase = new THREE.Color('#e2cf9f');
   private surfaceBase!: Float32Array;
@@ -98,11 +101,15 @@ export class Tank {
     const W = this.width;
     const D = this.depth;
     const H = this.height;
-    const iw = this.innerW;
-    const id = this.innerD;
+    // Sand, water and backdrop run right up to the glass. (They used to stop at the
+    // placement area, which left a see-through gap all the way around the tank.)
+    const gw = W - 0.03;
+    const gd = D - 0.03;
+    const segX = Math.round(gw * 12);
+    const segZ = Math.round(gd * 12);
 
     // Sand
-    const sandGeo = new THREE.PlaneGeometry(iw, id, Math.round(iw * 12), Math.round(id * 12));
+    const sandGeo = new THREE.PlaneGeometry(gw, gd, segX, segZ);
     sandGeo.rotateX(-Math.PI / 2);
     const pos = sandGeo.attributes.position as THREE.BufferAttribute;
     const colors = new Float32Array(pos.count * 3);
@@ -116,30 +123,21 @@ export class Tank {
     this.sand = new THREE.Mesh(sandGeo, this.sandMat);
     this.sand.name = 'sand';
     this.built.add(this.sand);
-    // Sand "skirt" visible through the front glass
-    const skirtGeo = new THREE.PlaneGeometry(iw, 1, Math.round(iw * 12), 1);
-    const sp = skirtGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < sp.count; i++) {
-      const x = sp.getX(i);
-      sp.setY(i, sp.getY(i) > 0 ? this.sandHeight(x, id / 2) : 0);
-    }
-    const skirt = new THREE.Mesh(skirtGeo, std('#b39b6c', { roughness: 1 }));
-    skirt.position.z = id / 2 - 0.001;
-    skirt.userData.skirt = true;
-    this.built.add(skirt);
+    // Sand "skirt": the cut edge of the sand bed, seen through every pane
+    this.built.add(new THREE.Mesh(this.skirtGeometry(gw, gd, segX, segZ), this.skirtMat));
 
     // Backdrop
-    const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(iw, H), this.backdropMat);
-    backdrop.position.set(0, H / 2, -id / 2 + 0.01);
+    const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(gw, H), this.backdropMat);
+    backdrop.position.set(0, H / 2, -gd / 2 + 0.01);
     this.built.add(backdrop);
 
     // Water volume tint + surface
-    const tint = new THREE.Mesh(new THREE.BoxGeometry(iw - 0.02, this.waterY, id - 0.02), this.tintMat);
+    const tint = new THREE.Mesh(new THREE.BoxGeometry(gw - 0.02, this.waterY, gd - 0.02), this.tintMat);
     tint.position.y = this.waterY / 2;
     tint.renderOrder = 10;
     this.built.add(tint);
 
-    const surfGeo = new THREE.PlaneGeometry(iw, id, 48, 24);
+    const surfGeo = new THREE.PlaneGeometry(gw, gd, 48, 24);
     surfGeo.rotateX(-Math.PI / 2);
     this.surfaceBase = Float32Array.from((surfGeo.attributes.position as THREE.BufferAttribute).array as Float32Array);
     this.surface = new THREE.Mesh(surfGeo, this.surfaceMat);
@@ -175,13 +173,13 @@ export class Tank {
       this.built.add(pane);
     }
     // Algae on the inside of front + sides
-    const algaeFront = new THREE.Mesh(new THREE.PlaneGeometry(iw, this.waterY), this.algaeMat);
-    algaeFront.position.set(0, this.waterY / 2, id / 2 - 0.02);
+    const algaeFront = new THREE.Mesh(new THREE.PlaneGeometry(gw, this.waterY), this.algaeMat);
+    algaeFront.position.set(0, this.waterY / 2, gd / 2 - 0.02);
     algaeFront.renderOrder = 15;
     this.built.add(algaeFront);
     for (const side of [-1, 1]) {
-      const a = new THREE.Mesh(new THREE.PlaneGeometry(id, this.waterY), this.algaeMat);
-      a.position.set(side * (iw / 2 - 0.02), this.waterY / 2, 0);
+      const a = new THREE.Mesh(new THREE.PlaneGeometry(gd, this.waterY), this.algaeMat);
+      a.position.set(side * (gw / 2 - 0.02), this.waterY / 2, 0);
       a.rotation.y = Math.PI / 2;
       a.renderOrder = 15;
       this.built.add(a);
@@ -216,8 +214,11 @@ export class Tank {
     this.built.add(rim(0.06, 0.18), rim(H, 0.14));
 
     // Lamp hood on top
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, 0.12, 0.5), [frameMat, frameMat, frameMat, this.lampMat, frameMat, frameMat]);
+    const hm = this.hoodMat;
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, 0.1, 0.44), [hm, hm, hm, this.lampMat, hm, hm]);
     lamp.position.set(0, H + 0.12, -0.2);
+    lamp.renderOrder = 21;
+    this.hood = lamp;
     this.built.add(lamp);
 
     // Stand
@@ -238,6 +239,42 @@ export class Tank {
     if (this.theme) this.setTheme(this.theme);
   }
 
+  /** A strip around the perimeter of the sand, from the tank floor up to the sand surface. */
+  private skirtGeometry(gw: number, gd: number, segX: number, segZ: number): THREE.BufferGeometry {
+    const ring: [number, number][] = [];
+    for (let i = 0; i < segX; i++) ring.push([-gw / 2 + (gw * i) / segX, gd / 2]);
+    for (let i = 0; i < segZ; i++) ring.push([gw / 2, gd / 2 - (gd * i) / segZ]);
+    for (let i = 0; i < segX; i++) ring.push([gw / 2 - (gw * i) / segX, -gd / 2]);
+    for (let i = 0; i < segZ; i++) ring.push([-gw / 2, -gd / 2 + (gd * i) / segZ]);
+    const n = ring.length;
+    const pos = new Float32Array(n * 6);
+    const idx: number[] = [];
+    ring.forEach(([x, z], i) => {
+      pos.set([x, 0, z, x, this.sandHeight(x, z), z], i * 6);
+      const a = i * 2;
+      const b = ((i + 1) % n) * 2;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  /**
+   * Fade the lamp hood out as the camera rises above the tank, so a top-down
+   * view looks into the water instead of at the back of a black bar.
+   */
+  setHoodFade(cameraY: number): void {
+    if (!this.hood) return;
+    const t = Math.min(1, Math.max(0, (cameraY - (this.height + 0.3)) / 1.6));
+    const o = 1 - t * t * (3 - 2 * t);
+    this.hoodMat.opacity = o;
+    this.lampMat.opacity = o;
+    this.hood.visible = o > 0.02;
+  }
+
   private static logoTex: THREE.Texture | null = null;
   private static logoTexture(): THREE.Texture {
     if (!Tank.logoTex) {
@@ -254,6 +291,7 @@ export class Tank {
     (u.uBottom.value as THREE.Color).set(theme.bottom);
     u.uStars.value = theme.stars ? 1 : 0;
     this.sandBase.set(theme.sand);
+    this.skirtMat.color.copy(this.sandBase).multiplyScalar(0.72);
     this.tintMat.color.set(theme.water);
     if (!this.sand) return;
     const geo = this.sand.geometry;
